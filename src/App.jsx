@@ -163,14 +163,32 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         }
         if (cancelled) return
 
-        localLandmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-            delegate: 'CPU',
-          },
-          runningMode: 'VIDEO',
-          numHands: 2,
-        })
+        // Try mirrors before Google's storage host: some networks block storage.googleapis.com.
+        const modelUrls = [
+          'https://github.com/sanderdesnaijer/mediapipe-model-mirrors/releases/download/v1/hand_landmarker.task',
+          'https://huggingface.co/Leo-TX/mediapipe-hand/resolve/main/hand_landmarker.task',
+          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        ]
+        const modelErrors = []
+        for (const modelUrl of modelUrls) {
+          if (cancelled) return
+          try {
+            localLandmarker = await HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: modelUrl,
+                delegate: 'CPU',
+              },
+              runningMode: 'VIDEO',
+              numHands: 2,
+            })
+            break
+          } catch (modelError) {
+            modelErrors.push(modelUrl + ' → ' + (modelError?.message || String(modelError)))
+          }
+        }
+        if (!localLandmarker) {
+          throw new Error('Could not download or initialize the hand model from any mirror. ' + modelErrors.join(' | '))
+        }
         if (cancelled) {
           try { localLandmarker.close() } catch {}
           localLandmarker = null
