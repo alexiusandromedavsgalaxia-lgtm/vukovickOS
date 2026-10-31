@@ -19,7 +19,7 @@ function AppContent({ app, split, onSplit }) {
   if (app.id === 'browser') return <div className="browser-content"><div className="address-bar"><span>⌕</span> https://vukovick.space <span className="secure">●</span></div><div className="browser-hero"><div className="eyebrow">A NEW WAY TO INTERACT</div><h2>Make the interface<br/><em>feel alive.</em></h2><p>Grab. Stretch. Fold. Throw. Your desktop follows your hands.</p><button className="primary-button" onClick={onSplit}>Try split view <span>↗</span></button></div><div className="browser-cards"><div><b>01 / Gesture</b><span>Natural movement</span></div><div><b>02 / Physics</b><span>Playful objects</span></div><div><b>03 / Space</b><span>Flexible windows</span></div></div></div>
   if (app.id === 'notes') return <div className="notes-content"><div className="note-date">SATURDAY · OCTOBER 31</div><h2>Things to imagine</h2><p>What if a window could feel like paper?</p><ul><li>Grab an app with a pinch.</li><li>Stretch it between two hands.</li><li>Split it into two working surfaces.</li><li>Throw a ball at the camera to unlock free physics.</li></ul><textarea aria-label="Write a note" defaultValue="The best interfaces make ideas feel tangible." /></div>
   if (app.id === 'finder') return <div className="files-content"><div className="file-row"><span className="file-icon blue">▣</span><div><b>My projects</b><small>12 items</small></div><span>Today</span></div><div className="file-row"><span className="file-icon yellow">▤</span><div><b>Design sketches</b><small>8 items</small></div><span>Yesterday</span></div><div className="file-row"><span className="file-icon pink">▧</span><div><b>Ideas.txt</b><small>4 KB</small></div><span>Oct 28</span></div></div>
-  if (app.id === 'music') return <div className="music-content"><div className="album-art">♫</div><div className="track-title">Motion in colour</div><div className="track-subtitle">vukovickOS sound lab</div><div className="track-line"><span/></div><div className="player-controls"><button>↶</button><button className="play-button">▶</button><button>↷</button></div></div>
+  if (app.id === 'music') return <div className="music-content"><div className="album-art">♫</div><div className="track-title">Motion in colour</div><div className="track-subtitle">vukovickOS sound lab · visual demo</div><small className="demo-note">Music controls are a visual mock-up.</small><div className="track-line"><span/></div><div className="player-controls"><button disabled aria-label="Previous track">↶</button><button className="play-button" disabled aria-label="Playback demo">▶</button><button disabled aria-label="Next track">↷</button></div></div>
   if (app.id === 'gallery') return <div className="gallery-content"><div className="gallery-tile tile-a">01 <span>Soft forms</span></div><div className="gallery-tile tile-b">02 <span>Colour study</span></div><div className="gallery-tile tile-c">03 <span>Spatial notes</span></div></div>
   if (app.id === 'terminal') return <div className="terminal-content"><p>vukovickOS [prototype]</p><p>Gesture engine initialized...</p><p>Physics layer: <b>standby</b></p><p>Camera: permission required</p><p className="terminal-prompt">guest@vukovick:~$ <i>_</i></p></div>
   if (app.id === 'settings') return <div className="settings-content"><div><span>Appearance</span><b>Midnight glass</b></div><div><span>Interaction</span><b>Gesture + pointer</b></div><div><span>Physics mode</span><b>Manual activation</b></div><div><span>Camera processing</span><b>On-device demo</b></div></div>
@@ -44,7 +44,8 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, status 
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires HTTPS or localhost.')
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false })
         streamRef.current = stream
-        if (!videoRef.current || cancelled) return
+        if (cancelled) { stream.getTracks().forEach(track => track.stop()); return }
+        if (!videoRef.current) throw new Error('Camera preview is not available.')
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
@@ -74,13 +75,13 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, status 
             if (pinch && !previous.pinch) onPinch('start', center)
             if (pinch && previous.pinch) onPinch('move', center)
             if (!pinch && previous.pinch) onPinch('end', center)
-            if (curled && previous.fist && area > previous.area * 1.45 && area > 0.035) {
+            if (curled && previous.fist && area > previous.area * 1.45 && area > 0.035 && now - (previous.lastThrow || 0) > 1800) {
               onPhysics()
               onStatus('Free Physics activated · throw detected')
             } else if (pinch) onStatus('Pinch detected · grab and move')
             else if (curled) onStatus('Fist detected · prepare a throw')
             else onStatus('Hand tracked · try a pinch')
-            previousRef.current = { fist: curled, area, pinch, x: center.x, y: center.y }
+            previousRef.current = { fist: curled, area, pinch, x: center.x, y: center.y, lastThrow: curled && previous.fist && area > previous.area * 1.45 && area > 0.035 ? now : (previous.lastThrow || 0) }
           } else {
             if (previousRef.current.pinch) onPinch('end', {x:0.5,y:0.5})
             previousRef.current = { ...previousRef.current, fist: false, pinch: false }
@@ -112,6 +113,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, status 
 
 export default function App() {
   const [windows, setWindows] = useState([])
+  const [maximizedWindows, setMaximizedWindows] = useState({})
   const [activeWindow, setActiveWindow] = useState(null)
   const [freePhysics, setFreePhysics] = useState(false)
   const [cameraOn, setCameraOn] = useState(false)
@@ -119,10 +121,18 @@ export default function App() {
   const [splitWindows, setSplitWindows] = useState({})
   const [icons, setIcons] = useState(initialIcons)
   const [toast, setToast] = useState('')
+  const [now, setNow] = useState(() => new Date())
   const boardRef = useRef(null)
   const dragRef = useRef(null)
   const pinchRef = useRef(null)
-  const lastToast = useRef(0)\n  const iconsRef = useRef(icons)\n  const freePhysicsRef = useRef(freePhysics)\n  iconsRef.current = icons\n  freePhysicsRef.current = freePhysics
+  const lastToast = useRef(0)
+  const iconsRef = useRef(icons)
+  iconsRef.current = icons
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const notify = useCallback((message) => {
     setToast(message)
@@ -150,6 +160,8 @@ export default function App() {
     })
   }, [notify])
 
+  const activatePhysicsFromGesture = togglePhysics
+
   const onPinch = useCallback((phase, point) => {
     if (!boardRef.current) return
     if (phase === 'start') {
@@ -165,10 +177,10 @@ export default function App() {
     } else if (phase === 'end') {
       pinchRef.current = null
     }
-  }, [icons])
+  }, [])
 
   useEffect(() => {
-    if (!freePhysics) return
+    if (!freePhysics || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     let frame = 0
     let previous = 0
     const animate = (time) => {
@@ -231,7 +243,33 @@ export default function App() {
     setActiveWindow(win.id)
   }
 
-  const closeWindow = (id) => { setWindows(prev => prev.filter(w => w.id !== id)); setActiveWindow(null) }
+  const closeWindow = (id) => {
+    setWindows(prev => {
+      const next = prev.filter(w => w.id !== id)
+      setActiveWindow(current => current === id ? (next.filter(w => !w.minimized).at(-1)?.id || null) : current)
+      return next
+    })
+    setMaximizedWindows(prev => { const next = { ...prev }; delete next[id]; return next })
+    setSplitWindows(prev => { const next = { ...prev }; delete next[id]; return next })
+  }
+  const minimizeWindow = (id) => {
+    setWindows(prev => prev.map(w => w.id === id ? { ...w, minimized: true } : w))
+    if (activeWindow === id) setActiveWindow(windows.filter(w => w.id !== id && !w.minimized).at(-1)?.id || null)
+  }
+  const toggleMaximize = (id) => {
+    const board = boardRef.current?.getBoundingClientRect()
+    if (!board) return
+    const saved = maximizedWindows[id]
+    if (saved) {
+      setWindows(prev => prev.map(w => w.id === id ? { ...w, ...saved } : w))
+      setMaximizedWindows(prev => { const next = { ...prev }; delete next[id]; return next })
+    } else {
+      const current = windows.find(w => w.id === id)
+      if (!current) return
+      setMaximizedWindows(prev => ({ ...prev, [id]: { x: current.x, y: current.y, width: current.width, height: current.height } }))
+      setWindows(prev => prev.map(w => w.id === id ? { ...w, x: 12, y: 12, width: board.width - 24, height: board.height - 24 } : w))
+    }
+  }
   const toggleSplit = (id) => setSplitWindows(prev => ({ ...prev, [id]: !prev[id] }))
 
   return <div className={`os-shell ${freePhysics ? 'physics-on' : ''}`}>
@@ -244,7 +282,7 @@ export default function App() {
       <div className="topbar-spacer"/>
       <button className={cameraOn ? 'top-action active' : 'top-action'} onClick={() => setCameraOn(v => !v)}><span>◉</span>{cameraOn ? 'Camera on' : 'Enable camera'}</button>
       <button className={freePhysics ? 'physics-button active' : 'physics-button'} onClick={togglePhysics}><span>✳</span>{freePhysics ? 'Restore desktop' : 'Free physics'}</button>
-      <div className="clock"><b>10:31</b><small>SAT · OCT 31</small></div>
+      <div className="clock"><b>{new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(now)}</b><small>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(now).toUpperCase()}</small></div>
     </header>
 
     <main className="desktop" ref={boardRef}>
@@ -257,7 +295,7 @@ export default function App() {
 
       {windows.filter(w => !w.minimized).map(win => <section key={win.id} className={`app-window ${activeWindow === win.id ? 'focused' : ''} ${splitWindows[win.id] ? 'split-window' : ''}`} style={{left:win.x,top:win.y,width:win.width,height:win.height,zIndex:activeWindow === win.id ? 30 : 20}} onPointerDown={() => setActiveWindow(win.id)}>
         <div className="window-titlebar" onPointerDown={e => beginWindowDrag(e,win)}>
-          <div className="window-controls"><button className="dot close" onClick={() => closeWindow(win.id)} aria-label="Close window"/><button className="dot minimize" onClick={() => setWindows(prev=>prev.map(w=>w.id===win.id?{...w,minimized:true}:w))} aria-label="Minimize window"/><button className="dot maximize" onClick={() => setWindows(prev=>prev.map(w=>w.id===win.id?{...w,x:18,y:62,width:window.innerWidth-36,height:window.innerHeight-150}:w))} aria-label="Maximize window"/></div>
+          <div className="window-controls"><button className="dot close" onClick={() => closeWindow(win.id)} aria-label="Close window"/><button className="dot minimize" onClick={() => minimizeWindow(win.id)} aria-label="Minimize window"/><button className="dot maximize" onClick={() => toggleMaximize(win.id)} aria-label={maximizedWindows[win.id] ? 'Restore window' : 'Maximize window'}/></div>
           <div className="window-title">{win.name}</div>
           <button className="window-tool" onClick={() => toggleSplit(win.id)} title="Split this app into two surfaces">◫</button>
         </div>
