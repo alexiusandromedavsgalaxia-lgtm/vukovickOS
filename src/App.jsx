@@ -249,8 +249,8 @@ export default function App() {
 
     <main className="desktop" ref={boardRef}>
       <div className="desktop-caption"><span>YOUR SPACE</span><span>DRAG ICONS · OPEN WINDOWS · EXPERIMENT</span></div>
-      <div className={freePhysics ? 'app-grid floating' : 'app-grid'}>
-        {icons.map((app) => <button key={app.id} className={`app-icon ${freePhysics ? 'physical' : ''}`} style={freePhysics ? { left: app.x+'%', top: app.y+'%', transform:`translate(-50%,-50%) rotate(${app.rotation}deg) scale(${app.scale})` } : {}} onPointerDown={e => beginIconDrag(e,app)} onPointerUp={e => endIcon(e,app)} onDoubleClick={() => openApp(app)}>
+      <div className="app-grid floating">
+        {icons.map((app) => <button key={app.id} className={`app-icon ${freePhysics ? 'physical' : ''}`} style={{ left: app.x+'%', top: app.y+'%', transform:`translate(-50%,-50%) rotate(${freePhysics ? app.rotation : 0}deg) scale(${freePhysics ? app.scale : 1})` }} onPointerDown={e => beginIconDrag(e,app)} onPointerUp={e => endIcon(e,app)} onDoubleClick={() => openApp(app)}>
           <span className="icon-art" style={{background:app.color}}>{app.glyph}</span><span className="icon-label">{app.name}</span>
         </button>)}
       </div>
