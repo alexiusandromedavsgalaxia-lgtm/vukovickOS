@@ -33,6 +33,8 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
   const rafRef = useRef(0)
   const streamRef = useRef(null)
   const previousRef = useRef({ fist: false, area: 0, pinch: false, x: 0, y: 0, lastThrow: 0, twoHandPinch: false, handGap: 0 })
+  const lastDetectionRef = useRef(0)
+  const lastStatusRef = useRef('')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
 
@@ -58,17 +60,11 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         await videoRef.current.play()
         const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
         const options = {
-          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'CPU' },
           runningMode: 'VIDEO',
           numHands: 2,
         }
-        let landmarker
-        try {
-          landmarker = await HandLandmarker.createFromOptions(vision, options)
-        } catch (gpuError) {
-          if (cancelled) return
-          landmarker = await HandLandmarker.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'CPU' } })
-        }
+        const landmarker = await HandLandmarker.createFromOptions(vision, options)
         if (cancelled) { landmarker.close(); return }
         landmarkerRef.current = landmarker
         setReady(true)
@@ -76,7 +72,24 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         const detect = () => {
           if (cancelled || !videoRef.current || !landmarkerRef.current) return
           const now = performance.now()
-          const result = landmarkerRef.current.detectForVideo(videoRef.current, now)
+          if (now - lastDetectionRef.current < 120) { rafRef.current = requestAnimationFrame(detect); return }
+          lastDetectionRef.current = now
+          let result
+          try {
+            if (videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) { rafRef.current = requestAnimationFrame(detect); return }
+            result = landmarkerRef.current.detectForVideo(videoRef.current, now)
+          } catch (detectionError) {
+            setError('Hand tracking stopped. Close and reopen the camera to retry.')
+            reportStatus('Hand tracking stopped')
+            landmarkerRef.current?.close()
+            landmarkerRef.current = null
+            streamRef.current?.getTracks().forEach(track => track.stop())
+            streamRef.current = null
+            if (videoRef.current) videoRef.current.srcObject = null
+            setReady(false)
+            cancelAnimationFrame(rafRef.current)
+            return
+          }
           const hand = result.landmarks?.[0]
           if (hand) {
             const thumb = hand[4], index = hand[8], middle = hand[12], ring = hand[16], pinky = hand[20], wrist = hand[0]
@@ -168,6 +181,7 @@ export default function App() {
   const [now, setNow] = useState(() => new Date())
   const boardRef = useRef(null)
   const dragRef = useRef(null)
+  const iconMotionRef = useRef({ clientX: 0, clientY: 0, time: 0 })
   const pinchRef = useRef(null)
   const lastToast = useRef(0)
   const iconsRef = useRef(icons)
@@ -252,7 +266,7 @@ export default function App() {
     let frame = 0
     let previous = 0
     const animate = (time) => {
-      if (time - previous > 28) {
+      if (time - previous > 50) {
         previous = time
         setIcons(items => items.map(icon => {
           let x = icon.x + icon.vx
@@ -262,7 +276,7 @@ export default function App() {
           if (x < 5 || x > 94) vx *= -0.86
           if (y < 10 || y > 88) vy *= -0.82
           x = clamp(x, 5, 94); y = clamp(y, 10, 88)
-          return { ...icon, x, y, vx: vx * 0.998, vy: vy * 0.998, rotation: icon.rotation + vx * 1.7 }
+          return { ...icon, x, y, vx: clamp(vx * 0.992, -2.2, 2.2), vy: clamp(vy * 0.992, -2.2, 2.2), rotation: (icon.rotation + vx * 1.7) % 360 }
         }))
       }
       frame = requestAnimationFrame(animate)
@@ -280,6 +294,7 @@ export default function App() {
       if (dragRef.current.kind === 'icon') {
         const x = clamp(((dragRef.current.originX + dx) / board.width) * 100, 5, 94)
         const y = clamp(((dragRef.current.originY + dy) / board.height) * 100, 10, 88)
+        iconMotionRef.current = { clientX: event.clientX, clientY: event.clientY, time: performance.now() }
         setIcons(prev => prev.map(icon => icon.id === dragRef.current.id ? { ...icon, x, y, vx: 0, vy: 0 } : icon))
       } else if (dragRef.current.kind === 'resize') {
         const { id, winWidth, winHeight } = dragRef.current
@@ -299,11 +314,25 @@ export default function App() {
     const rect = boardRef.current.getBoundingClientRect()
     const item = icons.find(icon => icon.id === app.id)
     dragRef.current = { kind: 'icon', id: app.id, startX: event.clientX, startY: event.clientY, originX: item.x/100*rect.width, originY: item.y/100*rect.height, moved: false }
+    iconMotionRef.current = { clientX: event.clientX, clientY: event.clientY, time: performance.now() }
     event.currentTarget.setPointerCapture?.(event.pointerId)
   }
   const endIcon = (event, app) => {
     if (!dragRef.current) return
-    const moved = Math.hypot(event.clientX-dragRef.current.startX,event.clientY-dragRef.current.startY) > 8
+    const drag = dragRef.current
+    const moved = Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY) > 8
+    if (moved && freePhysicsRef.current && drag.kind === 'icon') {
+      const board = boardRef.current?.getBoundingClientRect()
+      if (board) {
+        const stamp = performance.now()
+        const elapsed = clamp(stamp - (iconMotionRef.current.time || stamp), 16, 250)
+        const dx = event.clientX - iconMotionRef.current.clientX
+        const dy = event.clientY - iconMotionRef.current.clientY
+        const vx = clamp((dx / board.width) * 100 * (50 / elapsed), -2.2, 2.2)
+        const vy = clamp((dy / board.height) * 100 * (50 / elapsed), -2.2, 2.2)
+        setIcons(prev => prev.map(icon => icon.id === app.id ? { ...icon, vx, vy, rotation: icon.rotation + vx * 10 } : icon))
+      }
+    }
     dragRef.current = null
     if (!moved) openApp(app)
   }
