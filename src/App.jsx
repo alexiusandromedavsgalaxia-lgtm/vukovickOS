@@ -27,12 +27,12 @@ function AppContent({ app, split, onSplit }) {
   return <div className="empty-content">A new space is ready.</div>
 }
 
-function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, status }) {
+function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHandSplit, status }) {
   const videoRef = useRef(null)
   const landmarkerRef = useRef(null)
   const rafRef = useRef(0)
   const streamRef = useRef(null)
-  const previousRef = useRef({ fist: false, area: 0, pinch: false, x: 0, y: 0 })
+  const previousRef = useRef({ fist: false, area: 0, pinch: false, x: 0, y: 0, lastThrow: 0, twoHandPinch: false, handGap: 0 })
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
 
@@ -105,7 +105,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, status 
       streamRef.current = null
       setReady(false)
     }
-  }, [enabled, onPhysics, onStatus, onPinch])
+  }, [enabled, onPhysics, onStatus, onPinch, onTwoHandSplit])
 
   if (!enabled) return null
   return <div className="camera-panel"><div className="camera-preview"><video ref={videoRef} playsInline muted/><div className="camera-scan"><span/></div><div className="camera-state">{ready ? 'LIVE TRACKING' : 'CONNECTING CAMERA'}</div></div><div className="camera-panel-copy"><div><b>Gesture tracking</b><small>{error || status || (ready ? 'Processing stays in this browser.' : 'Allow camera access to begin.')}</small></div><button onClick={onClose} aria-label="Close camera">×</button></div></div>
@@ -121,6 +121,8 @@ export default function App() {
   const [splitWindows, setSplitWindows] = useState({})
   const [icons, setIcons] = useState(initialIcons)
   const [toast, setToast] = useState('')
+  const freePhysicsRef = useRef(freePhysics)
+  freePhysicsRef.current = freePhysics
   const [now, setNow] = useState(() => new Date())
   const boardRef = useRef(null)
   const dragRef = useRef(null)
@@ -151,16 +153,20 @@ export default function App() {
   }, [])
 
   const togglePhysics = useCallback(() => {
-    setFreePhysics(current => {
-      const next = !current
-      notify(next ? 'FREE PHYSICS · objects released' : 'NORMAL MODE · desktop restored')
-      if (!next) setIcons(prev => prev.map((icon, i) => ({ ...icon, x: 13 + (i % 4) * 23, y: 20 + Math.floor(i / 4) * 34, vx: 0, vy: 0, rotation: 0, scale: 1 })))
-      else setIcons(prev => prev.map(icon => ({ ...icon, vx: (Math.random() - .5) * .75, vy: (Math.random() - .5) * .65, rotation: (Math.random() - .5) * 25 })))
-      return next
-    })
+    const next = !freePhysicsRef.current
+    freePhysicsRef.current = next
+    setFreePhysics(next)
+    notify(next ? 'FREE PHYSICS · objects released' : 'NORMAL MODE · desktop restored')
+    if (!next) setIcons(prev => prev.map((icon, i) => ({ ...icon, x: 13 + (i % 4) * 23, y: 20 + Math.floor(i / 4) * 34, vx: 0, vy: 0, rotation: 0, scale: 1 })))
+    else setIcons(prev => prev.map(icon => ({ ...icon, vx: (Math.random() - .5) * .75, vy: (Math.random() - .5) * .65, rotation: (Math.random() - .5) * 25 })))
   }, [notify])
 
   const activatePhysicsFromGesture = togglePhysics
+
+  const toggleActiveSplit = useCallback(() => {
+    if (!activeWindow) { notify('Open an app window first'); return }
+    setSplitWindows(prev => ({ ...prev, [activeWindow]: !prev[activeWindow] }))
+  }, [activeWindow, notify])
 
   const onPinch = useCallback((phase, point) => {
     if (!boardRef.current) return
@@ -302,7 +308,7 @@ export default function App() {
         <div className="window-body"><div className="window-main"><AppContent app={win} split={splitWindows[win.id]} onSplit={() => toggleSplit(win.id)}/></div>{splitWindows[win.id] && <div className="window-side"><div className="side-label">SECOND SURFACE</div><h3>{win.name} · view 2</h3><p>This app is now represented by two linked work surfaces. Drag the window or use the split control to reunite them.</p><button className="subtle-button" onClick={() => toggleSplit(win.id)}>Reunite surfaces</button></div>}</div>
       </section>)}
 
-      {cameraOn && <GestureCamera enabled={cameraOn} onClose={() => setCameraOn(false)} onPhysics={activatePhysicsFromGesture} onStatus={setGestureStatus} onPinch={onPinch} status={gestureStatus}/>}
+      {cameraOn && <GestureCamera enabled={cameraOn} onClose={() => setCameraOn(false)} onPhysics={activatePhysicsFromGesture} onStatus={setGestureStatus} onPinch={onPinch} onTwoHandSplit={toggleActiveSplit} status={gestureStatus}/>}
       {toast && <div className="toast"><span>✦</span>{toast}</div>}
       <div className="desktop-hint">{freePhysics ? 'PHYSICS ACTIVE · ICONS ARE IN MOTION' : 'NORMAL MODE · PHYSICS LOCKED'}</div>
     </main>
