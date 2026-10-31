@@ -23,7 +23,7 @@ function AppContent({ app, split, onSplit, note, onNoteChange }) {
   if (app.id === 'gallery') return <div className="gallery-content"><div className="gallery-tile tile-a">01 <span>Soft forms</span></div><div className="gallery-tile tile-b">02 <span>Colour study</span></div><div className="gallery-tile tile-c">03 <span>Spatial notes</span></div></div>
   if (app.id === 'terminal') return <div className="terminal-content"><p>vukovickOS [prototype]</p><p>Gesture engine initialized...</p><p>Physics layer: <b>standby</b></p><p>Camera: permission required</p><p className="terminal-prompt">guest@vukovick:~$ <i>_</i></p></div>
   if (app.id === 'settings') return <div className="settings-content"><div><span>Appearance</span><b>Midnight glass</b></div><div><span>Interaction</span><b>Gesture + pointer</b></div><div><span>Physics mode</span><b>Manual activation</b></div><div><span>Camera processing</span><b>On-device demo</b></div></div>
-  if (app.id === 'camera') return <div className="camera-content"><div className="camera-orb">◉</div><h3>Gesture camera</h3><p>Enable camera from the top bar to try hand tracking.</p></div>
+  if (app.id === 'camera') return <div className="camera-content"><div className="camera-orb">◉</div><h3>Gesture camera</h3><p>Use the camera button in the dock to try hand tracking.</p></div>
   return <div className="empty-content">A new space is ready.</div>
 }
 
@@ -438,21 +438,30 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!freePhysics || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!freePhysics) return
+    // Reduced-motion settings should tone physics down, not make the gesture appear broken.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const stepMs = reduceMotion ? 100 : 50
     let frame = 0
     let previous = 0
     const animate = (time) => {
-      if (time - previous > 50) {
+      if (document.visibilityState === 'visible' && time - previous > stepMs) {
         previous = time
         setIcons(items => items.map(icon => {
           let x = icon.x + icon.vx
           let y = icon.y + icon.vy
           let vx = icon.vx
-          let vy = icon.vy + 0.012
+          let vy = icon.vy + (reduceMotion ? 0.006 : 0.012)
           if (x < 5 || x > 94) vx *= -0.86
           if (y < 10 || y > 88) vy *= -0.82
           x = clamp(x, 5, 94); y = clamp(y, 10, 88)
-          return { ...icon, x, y, vx: clamp(vx * 0.992, -2.2, 2.2), vy: clamp(vy * 0.992, -2.2, 2.2), rotation: (icon.rotation + vx * 1.7) % 360 }
+          return {
+            ...icon,
+            x, y,
+            vx: clamp(vx * 0.992, -2.2, 2.2),
+            vy: clamp(vy * 0.992, -2.2, 2.2),
+            rotation: reduceMotion ? icon.rotation : (icon.rotation + vx * 1.7) % 360,
+          }
         }))
       }
       frame = requestAnimationFrame(animate)
