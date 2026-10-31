@@ -15,9 +15,9 @@ const APPS = [
 const initialIcons = APPS.map((app, i) => ({ ...app, x: 13 + (i % 4) * 23, y: 20 + Math.floor(i / 4) * 34, vx: (i % 2 ? 1 : -1) * (0.12 + i * 0.018), vy: 0.08 + i * 0.012, rotation: i * 5, scale: 1 }))
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 
-function AppContent({ app, split, onSplit }) {
+function AppContent({ app, split, onSplit, note, onNoteChange }) {
   if (app.id === 'browser') return <div className="browser-content"><div className="address-bar"><span>⌕</span> https://vukovick.space <span className="secure">●</span></div><div className="browser-hero"><div className="eyebrow">A NEW WAY TO INTERACT</div><h2>Make the interface<br/><em>feel alive.</em></h2><p>Grab. Stretch. Fold. Throw. Your desktop follows your hands.</p><button className="primary-button" onClick={onSplit}>Try split view <span>↗</span></button></div><div className="browser-cards"><div><b>01 / Gesture</b><span>Natural movement</span></div><div><b>02 / Physics</b><span>Playful objects</span></div><div><b>03 / Space</b><span>Flexible windows</span></div></div></div>
-  if (app.id === 'notes') return <div className="notes-content"><div className="note-date">SATURDAY · OCTOBER 31</div><h2>Things to imagine</h2><p>What if a window could feel like paper?</p><ul><li>Grab an app with a pinch.</li><li>Stretch it between two hands.</li><li>Split it into two working surfaces.</li><li>Throw a ball at the camera to unlock free physics.</li></ul><textarea aria-label="Write a note" defaultValue="The best interfaces make ideas feel tangible." /></div>
+  if (app.id === 'notes') return <div className="notes-content"><div className="note-date">SATURDAY · OCTOBER 31</div><h2>Things to imagine</h2><p>What if a window could feel like paper?</p><ul><li>Grab an app with a pinch.</li><li>Stretch it between two hands.</li><li>Split it into two working surfaces.</li><li>Throw a ball at the camera to unlock free physics.</li></ul><textarea aria-label="Write a note" value={note} onChange={event => onNoteChange(event.target.value)} placeholder="Write something..." /></div>
   if (app.id === 'finder') return <div className="files-content"><div className="file-row"><span className="file-icon blue">▣</span><div><b>My projects</b><small>12 items</small></div><span>Today</span></div><div className="file-row"><span className="file-icon yellow">▤</span><div><b>Design sketches</b><small>8 items</small></div><span>Yesterday</span></div><div className="file-row"><span className="file-icon pink">▧</span><div><b>Ideas.txt</b><small>4 KB</small></div><span>Oct 28</span></div></div>
   if (app.id === 'music') return <div className="music-content"><div className="album-art">♫</div><div className="track-title">Motion in colour</div><div className="track-subtitle">vukovickOS sound lab · visual demo</div><small className="demo-note">Music controls are a visual mock-up.</small><div className="track-line"><span/></div><div className="player-controls"><button disabled aria-label="Previous track">↶</button><button className="play-button" disabled aria-label="Playback demo">▶</button><button disabled aria-label="Next track">↷</button></div></div>
   if (app.id === 'gallery') return <div className="gallery-content"><div className="gallery-tile tile-a">01 <span>Soft forms</span></div><div className="gallery-tile tile-b">02 <span>Colour study</span></div><div className="gallery-tile tile-c">03 <span>Spatial notes</span></div></div>
@@ -146,19 +146,21 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
 
 export default function App() {
   const [windows, setWindows] = useState([])
+  const [note, setNote] = useState(() => { try { return localStorage.getItem('vukovick-note') || 'The best interfaces make ideas feel tangible.' } catch { return 'The best interfaces make ideas feel tangible.' } })
   const [maximizedWindows, setMaximizedWindows] = useState({})
   const [activeWindow, setActiveWindow] = useState(null)
   const [freePhysics, setFreePhysics] = useState(false)
   const [cameraOn, setCameraOn] = useState(false)
   const [gestureStatus, setGestureStatus] = useState('Camera off')
   const [splitWindows, setSplitWindows] = useState({})
-  const [icons, setIcons] = useState(initialIcons)
+  const [icons, setIcons] = useState(() => { try { const saved = JSON.parse(localStorage.getItem('vukovick-icons') || 'null'); return Array.isArray(saved) && saved.length === APPS.length ? saved : initialIcons } catch { return initialIcons } })
   const [toast, setToast] = useState('')
   const freePhysicsRef = useRef(freePhysics)
   freePhysicsRef.current = freePhysics
   const [now, setNow] = useState(() => new Date())
   const boardRef = useRef(null)
   const dragRef = useRef(null)
+  const resizeRef = useRef(null)
   const pinchRef = useRef(null)
   const lastToast = useRef(0)
   const iconsRef = useRef(icons)
@@ -168,6 +170,9 @@ export default function App() {
     const timer = window.setInterval(() => setNow(new Date()), 30000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => { try { localStorage.setItem('vukovick-icons', JSON.stringify(icons.map(({id,x,y,vx,vy,rotation,scale,...rest}) => ({id,x,y,vx,vy,rotation,scale,...rest})))) } catch {} }, [icons])
+  useEffect(() => { try { localStorage.setItem('vukovick-note', note) } catch {} }, [note])
 
   const notify = useCallback((message) => {
     setToast(message)
@@ -252,6 +257,9 @@ export default function App() {
         const x = clamp(((dragRef.current.originX + dx) / board.width) * 100, 5, 94)
         const y = clamp(((dragRef.current.originY + dy) / board.height) * 100, 10, 88)
         setIcons(prev => prev.map(icon => icon.id === dragRef.current.id ? { ...icon, x, y, vx: 0, vy: 0 } : icon))
+      } else if (dragRef.current.kind === 'resize') {
+        const { id, winWidth, winHeight } = dragRef.current
+        setWindows(prev => prev.map(win => win.id === id ? { ...win, width: clamp(winWidth + dx, 300, Math.max(300, window.innerWidth - win.x - 12)), height: clamp(winHeight + dy, 260, Math.max(260, window.innerHeight - win.y - 110)) } : win))
       } else {
         setWindows(prev => prev.map(win => win.id === dragRef.current.id ? { ...win, x: clamp(dragRef.current.winX + dx, 0, window.innerWidth - 260), y: clamp(dragRef.current.winY + dy, 42, window.innerHeight - 100) } : win))
       }
@@ -274,6 +282,13 @@ export default function App() {
     const moved = Math.hypot(event.clientX-dragRef.current.startX,event.clientY-dragRef.current.startY) > 8
     dragRef.current = null
     if (!moved) openApp(app)
+  }
+
+  const beginResize = (event, win) => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragRef.current = { kind: 'resize', id: win.id, startX: event.clientX, startY: event.clientY, winWidth: win.width, winHeight: win.height }
+    setActiveWindow(win.id)
   }
 
   const beginWindowDrag = (event, win) => {
@@ -311,11 +326,22 @@ export default function App() {
   }
   const toggleSplit = (id) => setSplitWindows(prev => ({ ...prev, [id]: !prev[id] }))
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && activeWindow) { closeWindow(activeWindow); return }
+      if (event.ctrlKey && event.code === 'Space') { event.preventDefault(); togglePhysics(); return }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); toggleActiveSplit(); return }
+      if (event.altKey && /^[1-8]$/.test(event.key)) { openApp(APPS[Number(event.key) - 1]); return }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeWindow, closeWindow, openApp, toggleActiveSplit, togglePhysics])
+
   return <div className={`os-shell ${freePhysics ? 'physics-on' : ''}`}>
     <div className="wallpaper-glow glow-one"/><div className="wallpaper-glow glow-two"/>
     <header className="topbar">
       <div className="brand-mark">v<span>.</span></div>
-      <div className="brand-name">vukovick<span>OS</span><small>SPATIAL DESKTOP / 0.1</small></div>
+      <div className="brand-name">vukovick<span>OS</span><small>SPATIAL DESKTOP / 0.3</small></div>
       <div className="topbar-divider"/>
       <div className="mode-indicator"><i className={freePhysics ? 'live' : ''}/>{freePhysics ? 'FREE PHYSICS' : 'NORMAL MODE'}</div>
       <div className="topbar-spacer"/>
@@ -338,12 +364,11 @@ export default function App() {
           <div className="window-title">{win.name}</div>
           <button className="window-tool" onClick={() => toggleSplit(win.id)} title="Split this app into two surfaces">◫</button>
         </div>
-        <div className="window-body"><div className="window-main"><AppContent app={win} split={splitWindows[win.id]} onSplit={() => toggleSplit(win.id)}/></div>{splitWindows[win.id] && <div className="window-side"><div className="side-label">SECOND SURFACE</div><h3>{win.name} · view 2</h3><p>This app is now represented by two linked work surfaces. Drag the window or use the split control to reunite them.</p><button className="subtle-button" onClick={() => toggleSplit(win.id)}>Reunite surfaces</button></div>}</div>
-      </section>)}
+        <div className="window-body"><div className="window-main"><AppContent app={win} split={splitWindows[win.id]} onSplit={() => toggleSplit(win.id)} note={note} onNoteChange={setNote}/></div>{splitWindows[win.id] && <div className="window-side"><div className="side-label">SECOND SURFACE · LIVE</div><AppContent app={win} split={false} onSplit={() => toggleSplit(win.id)} note={note} onNoteChange={setNote}/><button className="subtle-button" onClick={() => toggleSplit(win.id)}>Reunite surfaces</button></div>}</div><button className="window-resize" aria-label={`Resize ${win.name} window`} onPointerDown={event => beginResize(event, win)} /></section>)}
 
       {cameraOn && <GestureCamera enabled={cameraOn} onClose={() => setCameraOn(false)} onPhysics={activatePhysicsFromGesture} onStatus={setGestureStatus} onPinch={onPinch} onTwoHandSplit={toggleActiveSplit} status={gestureStatus}/>}
       {toast && <div className="toast"><span>✦</span>{toast}</div>}
-      <div className="desktop-hint">{freePhysics ? 'PHYSICS ACTIVE · ICONS ARE IN MOTION' : 'NORMAL MODE · PHYSICS LOCKED'}</div>
+      <div className="desktop-hint">{freePhysics ? 'PHYSICS ACTIVE · ICONS ARE IN MOTION' : 'NORMAL MODE · PHYSICS LOCKED'} · ESC CLOSES · CTRL+SPACE PHYSICS · ALT+1–8 APPS</div>
     </main>
 
     <footer className="dock-wrap"><nav className="dock">
