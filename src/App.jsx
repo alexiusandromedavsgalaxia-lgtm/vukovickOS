@@ -49,11 +49,18 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
-        const landmarker = await HandLandmarker.createFromOptions(vision, {
+        const options = {
           baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
           runningMode: 'VIDEO',
           numHands: 2,
-        })
+        }
+        let landmarker
+        try {
+          landmarker = await HandLandmarker.createFromOptions(vision, options)
+        } catch (gpuError) {
+          if (cancelled) return
+          landmarker = await HandLandmarker.createFromOptions(vision, { ...options, baseOptions: { ...options.baseOptions, delegate: 'CPU' } })
+        }
         if (cancelled) { landmarker.close(); return }
         landmarkerRef.current = landmarker
         setReady(true)
@@ -114,6 +121,11 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
       } catch (e) {
         setError(e?.message || 'Could not start the camera.')
         onStatus('Camera unavailable')
+        landmarkerRef.current?.close()
+        landmarkerRef.current = null
+        streamRef.current?.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+        if (videoRef.current) videoRef.current.srcObject = null
       }
     }
     start()
