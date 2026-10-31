@@ -59,12 +59,15 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         if (!videoRef.current) throw new Error('Camera preview is not available.')
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+        if (cancelled) return
         const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
+        if (cancelled) return
         const options = {
           baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'CPU' },
           runningMode: 'VIDEO',
           numHands: 2,
         }
+        if (cancelled) return
         const landmarker = await HandLandmarker.createFromOptions(vision, options)
         if (cancelled) { landmarker.close(); return }
         landmarkerRef.current = landmarker
