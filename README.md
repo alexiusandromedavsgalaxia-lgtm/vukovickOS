@@ -13,8 +13,10 @@ A gesture-first, browser-based spatial desktop experiment built with React, Vite
 - Minimize, maximize, restore, focus and close app windows.
 - Split an app into two live, linked surfaces and reunite them.
 - Notes and desktop icon positions persist in this browser using local storage.
-- Optional webcam hand tracking with pinch interaction and a two-hand stretch gesture to toggle split view.
+- Optional webcam hand tracking with pinch interaction, a two-hand stretch gesture to toggle split view, and a fist-forward gesture to toggle Free Physics.
 - CPU-based hand tracking with throttled detection to reduce GPU and thermal instability.
+- Camera startup reports whether access, video playback, or the remote hand-tracking model failed; mobile camera constraints have a simple fallback.
+- A stale camera initialization cannot stop a newer stream, including during React Strict Mode effect cleanup.
 - In Free Physics, icons can be thrown with pointer dragging or a pinch gesture; launch velocity is capped for stability.
 - Camera tracking fails closed if frame detection errors, releasing the camera stream instead of leaving a runaway loop.
 - Responsive layout, keyboard shortcuts and reduced-motion support.
@@ -61,4 +63,4 @@ vukovickOS is a web simulation, not a bootable operating system. It cannot contr
 
 ## Deployment
 
-This repository includes a GitHub Actions build workflow. A successful build verifies the production bundle; it does not automatically mean a Cloudflare Pages deployment has been configured or published.
+This repository includes a GitHub Actions build workflow. A successful build verifies the production bundle; it does not automatically mean a Cloudflare Pages deployment has been configured or published. This repository currently has a build-check workflow only, not a Cloudflare deployment workflow. To publish the latest `main`, the Cloudflare Pages project must be connected to this repository (build command `npm run build`, output directory `dist`) or deployed manually.
