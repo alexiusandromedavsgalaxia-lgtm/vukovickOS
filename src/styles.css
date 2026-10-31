@@ -23,3 +23,51 @@
 /* vukovickOS 0.3 interaction layer */
 .window-resize{position:absolute;right:2px;bottom:2px;width:22px;height:22px;border:0;background:transparent;cursor:nwse-resize;touch-action:none;z-index:4}.window-resize::before,.window-resize::after{content:'';position:absolute;right:5px;bottom:5px;width:8px;height:1px;background:#aeb9d8;transform:rotate(-45deg);transform-origin:right center;opacity:.7}.window-resize::after{right:8px;bottom:5px;width:5px;opacity:.45}.window-side{display:flex;flex-direction:column;gap:10px;overflow:auto;min-width:0}.window-side>.side-label{flex-shrink:0}.window-side>.subtle-button{align-self:flex-start;margin-top:auto;flex-shrink:0}.window-side .browser-content,.window-side .notes-content,.window-side .files-content,.window-side .settings-content{padding:12px}.window-side .browser-hero{padding:18px 5px 12px}.window-side .browser-hero h2{font-size:22px;letter-spacing:-1px}.window-side .browser-cards{grid-template-columns:1fr}.window-side .gallery-content{grid-template-columns:1fr}.window-side .gallery-tile{height:75px}.window-side .notes-content h2{font-size:17px}.window-side .notes-content textarea{min-height:70px}
 @media(max-width:700px){.window-resize{width:26px;height:26px}.window-side{padding:8px!important}.window-side .browser-hero h2{font-size:18px}.window-side .browser-hero p{font-size:9px}}
+
+
+/* vukovickOS 0.4: quieter desktop shell */
+.os-shell{min-height:0;height:100dvh;background:#17191f;color:#f5f5f7}
+.wallpaper-glow{display:none}
+.desktop{inset:0 0 78px;background:linear-gradient(145deg,#242832 0%,#1b1e26 55%,#20242c 100%)}
+.system-menu{position:absolute;z-index:110;top:10px;left:12px;display:flex;gap:6px}
+.system-menu-button{width:32px;height:32px;border:1px solid #ffffff1c;border-radius:9px;background:#292d36;color:#f4f5f8;font-weight:800;box-shadow:0 3px 12px #0002}
+.app-window{background:#f5f5f7;color:#202127;border:1px solid #0002;box-shadow:0 16px 48px #0004;backdrop-filter:none;border-radius:10px}
+.app-window.focused{border-color:#a4a8b4;box-shadow:0 18px 55px #0005}
+.window-titlebar{height:40px;background:#e8e9ed;color:#252630;border-bottom:1px solid #d4d5db;cursor:grab}
+.window-title{color:#363842;font-size:12px}
+.window-tool{display:none}
+.window-body{background:#f5f5f7;color:#252630}
+.window-main{background:#f5f5f7;color:#252630}
+.window-side{background:#eceef2;border-left-color:#d7d9df}
+.side-label,.eyebrow,.note-date{color:#606879}
+.browser-content,.notes-content,.files-content,.settings-content,.gallery-content,.camera-content{background:#f5f5f7;color:#252630}
+.address-bar{background:#e7e9ef;border-color:#d5d7de;color:#555c6b}
+.browser-hero p,.notes-content p,.notes-content li,.file-row small,.settings-content span,.camera-content p{color:#5d6370}
+.browser-cards div{background:#eceef3;border-color:#d9dbe2}
+.browser-cards b{color:#3b4260}
+.browser-cards span{color:#666d7c}
+.notes-content{color:#252630}
+.notes-content textarea{background:#fff;border-color:#d0d2d9;color:#252630}
+.file-row{border-bottom-color:#dedfe5}
+.settings-content div{border-bottom-color:#dedfe5}
+.music-content{background:#f5f5f7;color:#252630}
+.track-subtitle,.demo-note{color:#666d7c}
+.player-controls button{color:#333846}
+.terminal-content{background:#171a20;color:#9be2bb;height:100%}
+.camera-panel{z-index:120;right:12px;bottom:88px;box-shadow:0 12px 36px #0005}
+.toast{top:14px;background:#292d36;color:#f5f5f7}
+.dock-wrap{bottom:10px;gap:0}
+.dock{background:#e4e6eced;border:1px solid #ffffffa0;box-shadow:0 8px 30px #0003;backdrop-filter:blur(16px)}
+.dock-app{background:#ffffff8a}
+.dock-caption{display:none}
+.desktop-caption,.desktop-hint{display:none}
+.app-icon{transition:filter .15s}
+.app-icon:hover{filter:brightness(1.08)}
+.app-icon .icon-label{color:#f1f2f6;text-shadow:0 1px 4px #0009}
+@media(max-width:700px){
+ .desktop{inset:0 0 74px}
+ .app-window{top:54px!important;height:calc(100dvh - 136px)!important;max-height:none;border-radius:10px}
+ .camera-panel{right:8px;bottom:82px;width:min(220px,calc(100vw - 16px))}
+ .system-menu{top:8px;left:8px}
+}
+@media(max-height:520px){.desktop{inset:0 0 60px}.dock-wrap{bottom:5px}}
