@@ -163,7 +163,8 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         }
         if (cancelled) return
 
-        // Try mirrors before Google's storage host: some networks block storage.googleapis.com.
+        // Fetch the model ourselves, then pass its bytes to MediaPipe. This gives
+        // mobile browsers clearer HTTP/CORS errors than MediaPipe's internal loader.
         const modelUrls = [
           'https://github.com/sanderdesnaijer/mediapipe-model-mirrors/releases/download/v1/hand_landmarker.task',
           'https://huggingface.co/Leo-TX/mediapipe-hand/resolve/main/hand_landmarker.task',
@@ -173,9 +174,18 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         for (const modelUrl of modelUrls) {
           if (cancelled) return
           try {
+            const response = await fetch(modelUrl, { mode: 'cors', cache: 'force-cache' })
+            if (!response.ok) {
+              throw new Error('HTTP ' + response.status + ' ' + response.statusText)
+            }
+            const modelBytes = new Uint8Array(await response.arrayBuffer())
+            if (modelBytes.byteLength < 1000000) {
+              throw new Error('Model response was unexpectedly small (' + modelBytes.byteLength + ' bytes)')
+            }
+            if (cancelled) return
             localLandmarker = await HandLandmarker.createFromOptions(vision, {
               baseOptions: {
-                modelAssetPath: modelUrl,
+                modelAssetBuffer: modelBytes,
                 delegate: 'CPU',
               },
               runningMode: 'VIDEO',
@@ -183,11 +193,12 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             })
             break
           } catch (modelError) {
-            modelErrors.push(modelUrl + ' → ' + (modelError?.message || String(modelError)))
+            const detail = modelError?.message || (modelError?.type ? 'Browser ' + modelError.type + ' event' : String(modelError))
+            modelErrors.push(modelUrl + ' → ' + detail)
           }
         }
         if (!localLandmarker) {
-          throw new Error('Could not download or initialize the hand model from any mirror. ' + modelErrors.join(' | '))
+          throw new Error('Could not fetch or initialize the hand model. ' + modelErrors.join(' | '))
         }
         if (cancelled) {
           try { localLandmarker.close() } catch {}
