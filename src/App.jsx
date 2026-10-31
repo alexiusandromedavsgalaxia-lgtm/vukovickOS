@@ -38,6 +38,11 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
 
   const callbacksRef = useRef({ onClose, onPhysics, onStatus, onPinch, onTwoHandSplit })
   callbacksRef.current = { onClose, onPhysics, onStatus, onPinch, onTwoHandSplit }
+  const reportStatus = (message) => {
+    if (lastStatusRef.current === message) return
+    lastStatusRef.current = message
+    callbacksRef.current.onStatus(message)
+  }
 
   useEffect(() => {
     if (!enabled) return
@@ -67,7 +72,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         if (cancelled) { landmarker.close(); return }
         landmarkerRef.current = landmarker
         setReady(true)
-        callbacksRef.current.onStatus('Camera ready · show your hands')
+        reportStatus('Camera ready · show your hands')
         const detect = () => {
           if (cancelled || !videoRef.current || !landmarkerRef.current) return
           const now = performance.now()
@@ -89,10 +94,10 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             if (throwDetected) {
               callbacksRef.current.onPhysics()
               previous.lastThrow = now
-              callbacksRef.current.onStatus('Forward fist movement detected · physics toggled')
-            } else if (pinch) callbacksRef.current.onStatus('Pinch detected · grab and move')
-            else if (curled) callbacksRef.current.onStatus('Fist detected · move hand forward to toggle physics')
-            else callbacksRef.current.onStatus('Hand tracked · try a pinch')
+              reportStatus('Forward fist movement detected · physics toggled')
+            } else if (pinch) reportStatus('Pinch detected · grab and move')
+            else if (curled) reportStatus('Fist detected · move hand forward to toggle physics')
+            else reportStatus('Hand tracked · try a pinch')
 
             const secondHand = result.landmarks?.[1]
             if (secondHand) {
@@ -103,7 +108,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
               if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12) {
                 callbacksRef.current.onTwoHandSplit()
                 previous.twoHandPinch = false
-                callbacksRef.current.onStatus('Two-hand stretch detected · split view toggled')
+                reportStatus('Two-hand stretch detected · split view toggled')
               } else {
                 previous.twoHandPinch = bothPinching
               }
@@ -116,14 +121,14 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
           } else {
             if (previousRef.current.pinch) callbacksRef.current.onPinch('end', {x:0.5,y:0.5})
             previousRef.current = { ...previousRef.current, fist: false, pinch: false, twoHandPinch: false, handGap: 0 }
-            callbacksRef.current.onStatus('Show one or both hands')
+            reportStatus('Show one or both hands')
           }
           rafRef.current = requestAnimationFrame(detect)
         }
         detect()
       } catch (e) {
         setError(e?.message || 'Could not start the camera.')
-        callbacksRef.current.onStatus('Camera unavailable')
+        reportStatus('Camera unavailable')
         landmarkerRef.current?.close()
         landmarkerRef.current = null
         streamRef.current?.getTracks().forEach(track => track.stop())
@@ -156,7 +161,7 @@ export default function App() {
   const [cameraOn, setCameraOn] = useState(false)
   const [gestureStatus, setGestureStatus] = useState('Camera off')
   const [splitWindows, setSplitWindows] = useState({})
-  const [icons, setIcons] = useState(() => { try { const saved = JSON.parse(localStorage.getItem('vukovick-icons') || 'null'); return Array.isArray(saved) && saved.length === APPS.length ? saved : initialIcons } catch { return initialIcons } })
+  const [icons, setIcons] = useState(() => { try { const saved = JSON.parse(localStorage.getItem('vukovick-icons') || 'null'); return Array.isArray(saved) && saved.length === APPS.length && saved.every(icon => icon && APPS.some(app => app.id === icon.id) && Number.isFinite(icon.x) && Number.isFinite(icon.y)) ? saved.map(icon => ({ ...icon, x: clamp(icon.x, 5, 94), y: clamp(icon.y, 10, 88), vx: 0, vy: 0, rotation: 0, scale: 1 })) : initialIcons } catch { return initialIcons } })
   const [toast, setToast] = useState('')
   const freePhysicsRef = useRef(freePhysics)
   freePhysicsRef.current = freePhysics
