@@ -66,11 +66,12 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
 
     const stopLocalResources = () => {
       if (localFrame) cancelAnimationFrame(localFrame)
-      if (localLandmarker) {
-        try { localLandmarker.close() } catch {}
+      const ownedLandmarker = localLandmarker
+      if (ownedLandmarker) {
+        try { ownedLandmarker.close() } catch {}
         localLandmarker = null
       }
-      if (landmarkerRef.current && landmarkerRef.current === localLandmarker) {
+      if (landmarkerRef.current === ownedLandmarker) {
         landmarkerRef.current = null
       }
       if (localStream) {
