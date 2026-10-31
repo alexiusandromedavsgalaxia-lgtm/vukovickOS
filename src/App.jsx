@@ -36,6 +36,9 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
 
+  const callbacksRef = useRef({ onClose, onPhysics, onStatus, onPinch, onTwoHandSplit })
+  callbacksRef.current = { onClose, onPhysics, onStatus, onPinch, onTwoHandSplit }
+
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
@@ -64,7 +67,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         if (cancelled) { landmarker.close(); return }
         landmarkerRef.current = landmarker
         setReady(true)
-        onStatus('Camera ready · show your hands')
+        callbacksRef.current.onStatus('Camera ready · show your hands')
         const detect = () => {
           if (cancelled || !videoRef.current || !landmarkerRef.current) return
           const now = performance.now()
@@ -79,17 +82,17 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             const area = (Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys))
             const center = { x: 1 - (thumb.x+index.x)/2, y: (thumb.y+index.y)/2 }
             const previous = previousRef.current
-            if (pinch && !previous.pinch) onPinch('start', center)
-            if (pinch && previous.pinch) onPinch('move', center)
-            if (!pinch && previous.pinch) onPinch('end', center)
+            if (pinch && !previous.pinch) callbacksRef.current.onPinch('start', center)
+            if (pinch && previous.pinch) callbacksRef.current.onPinch('move', center)
+            if (!pinch && previous.pinch) callbacksRef.current.onPinch('end', center)
             const throwDetected = curled && previous.fist && area > previous.area * 1.45 && area > 0.035 && now - (previous.lastThrow || 0) > 1800
             if (throwDetected) {
-              onPhysics()
+              callbacksRef.current.onPhysics()
               previous.lastThrow = now
-              onStatus('Forward fist movement detected · physics toggled')
-            } else if (pinch) onStatus('Pinch detected · grab and move')
-            else if (curled) onStatus('Fist detected · move hand forward to toggle physics')
-            else onStatus('Hand tracked · try a pinch')
+              callbacksRef.current.onStatus('Forward fist movement detected · physics toggled')
+            } else if (pinch) callbacksRef.current.onStatus('Pinch detected · grab and move')
+            else if (curled) callbacksRef.current.onStatus('Fist detected · move hand forward to toggle physics')
+            else callbacksRef.current.onStatus('Hand tracked · try a pinch')
 
             const secondHand = result.landmarks?.[1]
             if (secondHand) {
@@ -98,9 +101,9 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
               const gap = distance(center, secondCenter)
               const bothPinching = pinch && secondPinch
               if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12) {
-                onTwoHandSplit()
+                callbacksRef.current.onTwoHandSplit()
                 previous.twoHandPinch = false
-                onStatus('Two-hand stretch detected · split view toggled')
+                callbacksRef.current.onStatus('Two-hand stretch detected · split view toggled')
               } else {
                 previous.twoHandPinch = bothPinching
               }
@@ -111,16 +114,16 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             }
             previousRef.current = { ...previous, fist: curled, area, pinch, x: center.x, y: center.y }
           } else {
-            if (previousRef.current.pinch) onPinch('end', {x:0.5,y:0.5})
+            if (previousRef.current.pinch) callbacksRef.current.onPinch('end', {x:0.5,y:0.5})
             previousRef.current = { ...previousRef.current, fist: false, pinch: false, twoHandPinch: false, handGap: 0 }
-            onStatus('Show one or both hands')
+            callbacksRef.current.onStatus('Show one or both hands')
           }
           rafRef.current = requestAnimationFrame(detect)
         }
         detect()
       } catch (e) {
         setError(e?.message || 'Could not start the camera.')
-        onStatus('Camera unavailable')
+        callbacksRef.current.onStatus('Camera unavailable')
         landmarkerRef.current?.close()
         landmarkerRef.current = null
         streamRef.current?.getTracks().forEach(track => track.stop())
@@ -138,7 +141,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
       streamRef.current = null
       setReady(false)
     }
-  }, [enabled, onPhysics, onStatus, onPinch, onTwoHandSplit])
+  }, [enabled])
 
   if (!enabled) return null
   return <div className="camera-panel"><div className="camera-preview"><video ref={videoRef} playsInline muted/><div className="camera-scan"><span/></div><div className="camera-state">{ready ? 'LIVE TRACKING' : 'CONNECTING CAMERA'}</div></div><div className="camera-panel-copy"><div><b>Gesture tracking</b><small>{error || status || (ready ? 'Processing stays in this browser.' : 'Allow camera access to begin.')}</small></div><button onClick={onClose} aria-label="Close camera">×</button></div></div>
@@ -355,19 +358,9 @@ export default function App() {
 
   return <div className={`os-shell ${freePhysics ? 'physics-on' : ''}`}>
     <div className="wallpaper-glow glow-one"/><div className="wallpaper-glow glow-two"/>
-    <header className="topbar">
-      <div className="brand-mark">v<span>.</span></div>
-      <div className="brand-name">vukovick<span>OS</span><small>SPATIAL DESKTOP / 0.3</small></div>
-      <div className="topbar-divider"/>
-      <div className="mode-indicator"><i className={freePhysics ? 'live' : ''}/>{freePhysics ? 'FREE PHYSICS' : 'NORMAL MODE'}</div>
-      <div className="topbar-spacer"/>
-      <button className={cameraOn ? 'top-action active' : 'top-action'} onClick={() => setCameraOn(v => !v)}><span>◉</span>{cameraOn ? 'Camera on' : 'Enable camera'}</button>
-      <button className={freePhysics ? 'physics-button active' : 'physics-button'} onClick={togglePhysics}><span>✳</span>{freePhysics ? 'Restore desktop' : 'Free physics'}</button>
-      <div className="clock"><b>{new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(now)}</b><small>{new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(now).toUpperCase()}</small></div>
-    </header>
+    <div className="system-menu"><button className="system-menu-button" onClick={() => notify(`vukovickOS · ${freePhysics ? 'Free Physics' : 'Normal mode'} · ${new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit'}).format(now)}`)} aria-label="System menu">v.</button><button className="system-menu-button" onClick={togglePhysics} title="Toggle Free Physics">{freePhysics ? '↺' : '✳'}</button></div>
 
     <main className="desktop" ref={boardRef}>
-      <div className="desktop-caption"><span>YOUR SPACE</span><span>DRAG ICONS · OPEN WINDOWS · EXPERIMENT</span></div>
       <div className="app-grid floating">
         {icons.map((app) => <button key={app.id} className={`app-icon ${freePhysics ? 'physical' : ''}`} style={{ left: app.x+'%', top: app.y+'%', transform:`translate(-50%,-50%) rotate(${freePhysics ? app.rotation : 0}deg) scale(${freePhysics ? app.scale : 1})` }} onPointerDown={e => beginIconDrag(e,app)} onPointerUp={e => endIcon(e,app)} onDoubleClick={() => openApp(app)}>
           <span className="icon-art" style={{background:app.color}}>{app.glyph}</span><span className="icon-label">{app.name}</span>
@@ -378,19 +371,17 @@ export default function App() {
         <div className="window-titlebar" onPointerDown={e => beginWindowDrag(e,win)}>
           <div className="window-controls"><button className="dot close" onClick={() => closeWindow(win.id)} aria-label="Close window"/><button className="dot minimize" onClick={() => minimizeWindow(win.id)} aria-label="Minimize window"/><button className="dot maximize" onClick={() => toggleMaximize(win.id)} aria-label={maximizedWindows[win.id] ? 'Restore window' : 'Maximize window'}/></div>
           <div className="window-title">{win.name}</div>
-          <button className="window-tool" onClick={() => toggleSplit(win.id)} title="Split this app into two surfaces">◫</button>
         </div>
         <div className="window-body"><div className="window-main"><AppContent app={win} split={splitWindows[win.id]} onSplit={() => toggleSplit(win.id)} note={note} onNoteChange={setNote}/></div>{splitWindows[win.id] && <div className="window-side"><div className="side-label">SECOND SURFACE · LIVE</div><AppContent app={win} split={false} onSplit={() => toggleSplit(win.id)} note={note} onNoteChange={setNote}/><button className="subtle-button" onClick={() => toggleSplit(win.id)}>Reunite surfaces</button></div>}</div><button className="window-resize" aria-label={`Resize ${win.name} window`} onPointerDown={event => beginResize(event, win)} /></section>)}
 
       {cameraOn && <GestureCamera enabled={cameraOn} onClose={() => setCameraOn(false)} onPhysics={activatePhysicsFromGesture} onStatus={setGestureStatus} onPinch={onPinch} onTwoHandSplit={toggleActiveSplit} status={gestureStatus}/>}
       {toast && <div className="toast"><span>✦</span>{toast}</div>}
-      <div className="desktop-hint">{freePhysics ? 'PHYSICS ACTIVE · ICONS ARE IN MOTION' : 'NORMAL MODE · PHYSICS LOCKED'} · ESC CLOSES · CTRL+SPACE PHYSICS · ALT+1–8 APPS</div>
     </main>
 
     <footer className="dock-wrap"><nav className="dock">
       {APPS.slice(0,6).map(app => <button key={app.id} className={windows.some(w=>w.id===app.id&&!w.minimized)?'dock-app running':'dock-app'} onClick={() => openApp(app)} title={app.name}><span style={{background:app.color}}>{app.glyph}</span></button>)}
       <i className="dock-separator"/>
-      <button className="dock-app camera-dock" onClick={() => setCameraOn(v=>!v)} title="Gesture camera"><span>◉</span></button>
+      <button className="dock-app camera-dock" onClick={() => setCameraOn(v=>!v)} title="Toggle gesture camera"><span>◉</span></button>
       <button className="dock-app settings-dock" onClick={() => openApp(APPS.find(a=>a.id==='settings'))} title="Settings"><span>⚙</span></button>
     </nav><div className="dock-caption">vukovickOS <span>·</span> built for curious hands</div></footer>
   </div>
