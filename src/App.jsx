@@ -112,7 +112,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             previousRef.current = { ...previous, fist: curled, area, pinch, x: center.x, y: center.y }
           } else {
             if (previousRef.current.pinch) onPinch('end', {x:0.5,y:0.5})
-            previousRef.current = { ...previousRef.current, fist: false, pinch: false }
+            previousRef.current = { ...previousRef.current, fist: false, pinch: false, twoHandPinch: false, handGap: 0 }
             onStatus('Show one or both hands')
           }
           rafRef.current = requestAnimationFrame(detect)
