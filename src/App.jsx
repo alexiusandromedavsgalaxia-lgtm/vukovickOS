@@ -163,43 +163,17 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
         }
         if (cancelled) return
 
-        // Fetch the model ourselves, then pass its bytes to MediaPipe. This gives
-        // mobile browsers clearer HTTP/CORS errors than MediaPipe's internal loader.
-        const modelUrls = [
-          'https://github.com/sanderdesnaijer/mediapipe-model-mirrors/releases/download/v1/hand_landmarker.task',
-          'https://huggingface.co/Leo-TX/mediapipe-hand/resolve/main/hand_landmarker.task',
-          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-        ]
-        const modelErrors = []
-        for (const modelUrl of modelUrls) {
-          if (cancelled) return
-          try {
-            const response = await fetch(modelUrl, { mode: 'cors', cache: 'force-cache' })
-            if (!response.ok) {
-              throw new Error('HTTP ' + response.status + ' ' + response.statusText)
-            }
-            const modelBytes = new Uint8Array(await response.arrayBuffer())
-            if (modelBytes.byteLength < 1000000) {
-              throw new Error('Model response was unexpectedly small (' + modelBytes.byteLength + ' bytes)')
-            }
-            if (cancelled) return
-            localLandmarker = await HandLandmarker.createFromOptions(vision, {
-              baseOptions: {
-                modelAssetBuffer: modelBytes,
-                delegate: 'CPU',
-              },
-              runningMode: 'VIDEO',
-              numHands: 2,
-            })
-            break
-          } catch (modelError) {
-            const detail = modelError?.message || (modelError?.type ? 'Browser ' + modelError.type + ' event' : String(modelError))
-            modelErrors.push(modelUrl + ' → ' + detail)
-          }
-        }
-        if (!localLandmarker) {
-          throw new Error('Could not fetch or initialize the hand model. ' + modelErrors.join(' | '))
-        }
+        // The production build downloads this model into public/models, so
+        // the browser loads it from the same origin as vukovickOS.
+        localLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: '/models/hand_landmarker.task',
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 2,
+        })
+
         if (cancelled) {
           try { localLandmarker.close() } catch {}
           localLandmarker = null
