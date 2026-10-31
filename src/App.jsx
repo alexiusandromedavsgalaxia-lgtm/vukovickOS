@@ -160,7 +160,6 @@ export default function App() {
   const [now, setNow] = useState(() => new Date())
   const boardRef = useRef(null)
   const dragRef = useRef(null)
-  const resizeRef = useRef(null)
   const pinchRef = useRef(null)
   const lastToast = useRef(0)
   const iconsRef = useRef(icons)
@@ -171,7 +170,7 @@ export default function App() {
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => { try { localStorage.setItem('vukovick-icons', JSON.stringify(icons.map(({id,x,y,vx,vy,rotation,scale,...rest}) => ({id,x,y,vx,vy,rotation,scale,...rest})))) } catch {} }, [icons])
+  useEffect(() => { if (freePhysics) return; try { localStorage.setItem('vukovick-icons', JSON.stringify(icons)) } catch {} }, [icons, freePhysics])
   useEffect(() => { try { localStorage.setItem('vukovick-note', note) } catch {} }, [note])
 
   const notify = useCallback((message) => {
@@ -215,7 +214,24 @@ export default function App() {
         const d = Math.hypot((icon.x/100*board.width)-x, (icon.y/100*board.height)-y)
         return d < best.d ? { id: icon.id, d } : best
       }, {id:null,d:Infinity})
-      pinchRef.current = { id: nearest.d < 180 ? nearest.id : null }
+      const hitWindow = [...boardRef.current.querySelectorAll('.app-window')].reverse().find(element => {
+        const rect = element.getBoundingClientRect()
+        return x >= rect.left - board.left && x <= rect.right - board.left && y >= rect.top - board.top && y <= rect.bottom - board.top
+      })
+      if (hitWindow) {
+        const id = hitWindow.dataset.windowId
+        const rect = hitWindow.getBoundingClientRect()
+        const offsetX = x - (rect.left - board.left)
+        const offsetY = y - (rect.top - board.top)
+        pinchRef.current = { windowId: id, offsetX, offsetY }
+        setActiveWindow(id)
+      } else {
+        pinchRef.current = { id: nearest.d < 180 ? nearest.id : null }
+      }
+    } else if (phase === 'move' && pinchRef.current?.windowId) {
+      const board = boardRef.current.getBoundingClientRect()
+      const { windowId, offsetX, offsetY } = pinchRef.current
+      setWindows(prev => prev.map(win => win.id === windowId ? { ...win, x: clamp(point.x * board.width - offsetX, 0, board.width - 260), y: clamp(point.y * board.height - offsetY, 0, board.height - 100) } : win))
     } else if (phase === 'move' && pinchRef.current?.id) {
       setIcons(prev => prev.map(icon => icon.id === pinchRef.current.id ? { ...icon, x: clamp(point.x*100, 5, 94), y: clamp(point.y*100, 10, 88), vx: 0, vy: 0 } : icon))
     } else if (phase === 'end') {
@@ -358,7 +374,7 @@ export default function App() {
         </button>)}
       </div>
 
-      {windows.filter(w => !w.minimized).map(win => <section key={win.id} className={`app-window ${activeWindow === win.id ? 'focused' : ''} ${splitWindows[win.id] ? 'split-window' : ''}`} style={{left:win.x,top:win.y,width:win.width,height:win.height,zIndex:activeWindow === win.id ? 30 : 20}} onPointerDown={() => setActiveWindow(win.id)}>
+      {windows.filter(w => !w.minimized).map(win => <section key={win.id} className={`app-window ${activeWindow === win.id ? 'focused' : ''} ${splitWindows[win.id] ? 'split-window' : ''}`} data-window-id={win.id} style={{left:win.x,top:win.y,width:win.width,height:win.height,zIndex:activeWindow === win.id ? 30 : 20}} onPointerDown={() => setActiveWindow(win.id)}>
         <div className="window-titlebar" onPointerDown={e => beginWindowDrag(e,win)}>
           <div className="window-controls"><button className="dot close" onClick={() => closeWindow(win.id)} aria-label="Close window"/><button className="dot minimize" onClick={() => minimizeWindow(win.id)} aria-label="Minimize window"/><button className="dot maximize" onClick={() => toggleMaximize(win.id)} aria-label={maximizedWindows[win.id] ? 'Restore window' : 'Maximize window'}/></div>
           <div className="window-title">{win.name}</div>
