@@ -30,17 +30,21 @@ function AppContent({ app, split, onSplit, note, onNoteChange }) {
 function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHandSplit, status }) {
   const videoRef = useRef(null)
   const landmarkerRef = useRef(null)
-  const rafRef = useRef(0)
   const streamRef = useRef(null)
-  const previousRef = useRef({ fist: false, area: 0, pinch: false, x: 0, y: 0, lastThrow: 0, twoHandPinch: false, handGap: 0 })
+  const rafRef = useRef(0)
+  const callbacksRef = useRef({ onClose, onPhysics, onStatus, onPinch, onTwoHandSplit })
+  callbacksRef.current = { onClose, onPhysics, onStatus, onPinch, onTwoHandSplit }
+
+  const previousRef = useRef({
+    fist: false, area: 0, pinch: false, lastThrow: 0,
+    twoHandPinch: false, handGap: 0, twoHandStartGap: 0,
+  })
   const lastDetectionRef = useRef(0)
   const lastSplitRef = useRef(0)
   const lastStatusRef = useRef('')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
 
-  const callbacksRef = useRef({ onClose, onPhysics, onStatus, onPinch, onTwoHandSplit })
-  callbacksRef.current = { onClose, onPhysics, onStatus, onPinch, onTwoHandSplit }
   const reportStatus = (message) => {
     if (lastStatusRef.current === message) return
     lastStatusRef.current = message
@@ -48,83 +52,206 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
   }
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      setReady(false)
+      setError('')
+      return undefined
+    }
+
     let cancelled = false
+    let localStream = null
+    let localLandmarker = null
+    let localFrame = 0
+    let stage = 'camera permission'
+
+    const stopLocalResources = () => {
+      if (localFrame) cancelAnimationFrame(localFrame)
+      if (localLandmarker) {
+        try { localLandmarker.close() } catch {}
+        localLandmarker = null
+      }
+      if (landmarkerRef.current && landmarkerRef.current === localLandmarker) {
+        landmarkerRef.current = null
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop())
+        if (streamRef.current === localStream) streamRef.current = null
+        if (videoRef.current?.srcObject === localStream) videoRef.current.srcObject = null
+        localStream = null
+      }
+    }
+
+    const errorMessage = (err, currentStage) => {
+      const name = err?.name || ''
+      if (currentStage === 'camera permission') {
+        if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+          return 'Camera needs a secure HTTPS page. Open the HTTPS version of this site.'
+        }
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          return 'Browser blocked camera access. Allow camera permission for this site, then close and reopen the camera.'
+        }
+        if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          return 'No available camera was found on this device.'
+        }
+        if (name === 'NotReadableError' || name === 'TrackStartError') {
+          return 'The camera is busy or unavailable. Close other apps using it and try again.'
+        }
+        if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+          return 'The camera rejected the requested settings. Try again with default camera settings.'
+        }
+        return 'Could not access the camera' + (err?.message ? ': ' + err.message : '.')
+      }
+      if (currentStage === 'camera playback') {
+        return 'Camera permission was granted, but the preview could not start' + (err?.message ? ': ' + err.message : '.')
+      }
+      if (currentStage === 'hand-tracking engine') {
+        return 'The camera opened, but the hand-tracking engine could not load. Check the connection or whether this site blocks its model files' + (err?.message ? '. Details: ' + err.message : '.')
+      }
+      return 'Hand tracking failed' + (err?.message ? ': ' + err.message : '.')
+    }
+
     const start = async () => {
+      setError('')
+      setReady(false)
+      reportStatus('Requesting camera permission')
+
       try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires HTTPS or localhost.')
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false })
-        streamRef.current = stream
-        if (cancelled) { stream.getTracks().forEach(track => track.stop()); return }
-        if (!videoRef.current) throw new Error('Camera preview is not available.')
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('getUserMedia is unavailable. Use this site over HTTPS in a supported browser.')
+        }
+
+        stage = 'camera permission'
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          })
+        } catch (firstCameraError) {
+          if (cancelled) return
+          const permissionErrors = ['NotAllowedError', 'SecurityError', 'NotFoundError', 'DevicesNotFoundError', 'NotReadableError', 'TrackStartError']
+          if (permissionErrors.includes(firstCameraError?.name)) throw firstCameraError
+          // Some mobile browsers reject ideal/facingMode constraints; retry with the simplest request.
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        }
+
+        if (cancelled) {
+          localStream.getTracks().forEach(track => track.stop())
+          localStream = null
+          return
+        }
+
+        streamRef.current = localStream
+        const video = videoRef.current
+        if (!video) throw new Error('Camera preview element is not mounted.')
+        video.muted = true
+        video.playsInline = true
+        video.srcObject = localStream
+
+        stage = 'camera playback'
+        await video.play()
         if (cancelled) return
-        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
-        if (cancelled) return
-        const options = {
-          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'CPU' },
-          runningMode: 'VIDEO',
-          numHands: 2,
+        reportStatus('Camera is on · loading hand tracking')
+
+        stage = 'hand-tracking engine'
+        let vision
+        try {
+          vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm')
+        } catch (firstWasmError) {
+          if (cancelled) return
+          vision = await FilesetResolver.forVisionTasks('https://unpkg.com/@mediapipe/tasks-vision@0.10.22/wasm')
         }
         if (cancelled) return
-        const landmarker = await HandLandmarker.createFromOptions(vision, options)
-        if (cancelled) { landmarker.close(); return }
-        landmarkerRef.current = landmarker
+
+        localLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          numHands: 2,
+        })
+        if (cancelled) {
+          try { localLandmarker.close() } catch {}
+          localLandmarker = null
+          return
+        }
+
+        landmarkerRef.current = localLandmarker
         setReady(true)
-        reportStatus('Camera ready · show your hands')
+        reportStatus('Hand tracking ready · show one or both hands')
+
         const detect = () => {
-          if (cancelled || !videoRef.current || !landmarkerRef.current) return
+          if (cancelled || !videoRef.current || !localLandmarker || !localStream?.active) return
           const now = performance.now()
-          if (now - lastDetectionRef.current < 120) { rafRef.current = requestAnimationFrame(detect); return }
-          lastDetectionRef.current = now
-          let result
-          try {
-            if (videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) { rafRef.current = requestAnimationFrame(detect); return }
-            result = landmarkerRef.current.detectForVideo(videoRef.current, now)
-          } catch (detectionError) {
-            setError('Hand tracking stopped. Close and reopen the camera to retry.')
-            reportStatus('Hand tracking stopped')
-            landmarkerRef.current?.close()
-            landmarkerRef.current = null
-            streamRef.current?.getTracks().forEach(track => track.stop())
-            streamRef.current = null
-            if (videoRef.current) videoRef.current.srcObject = null
-            setReady(false)
-            cancelAnimationFrame(rafRef.current)
+          if (now - lastDetectionRef.current < 100) {
+            localFrame = requestAnimationFrame(detect)
+            rafRef.current = localFrame
             return
           }
-          const hand = result.landmarks?.[0]
-          if (hand) {
+          lastDetectionRef.current = now
+
+          let result
+          try {
+            if (videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+              localFrame = requestAnimationFrame(detect)
+              rafRef.current = localFrame
+              return
+            }
+            result = localLandmarker.detectForVideo(videoRef.current, now)
+          } catch (detectionError) {
+            if (cancelled) return
+            setError('Camera is running, but hand detection stopped. Close and reopen the camera. Details: ' + (detectionError?.message || 'unknown detection error'))
+            reportStatus('Hand detection stopped')
+            setReady(false)
+            stopLocalResources()
+            return
+          }
+
+          const hands = result.landmarks || []
+          const previous = previousRef.current
+          const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+          const getHandInfo = (hand) => {
             const thumb = hand[4], index = hand[8], middle = hand[12], ring = hand[16], pinky = hand[20], wrist = hand[0]
-            const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y)
-            const pinch = distance(thumb,index) < 0.055
-            const curled = [index,middle,ring,pinky].every(p => distance(p,wrist) < 0.29)
-            const xs = hand.map(p=>p.x), ys = hand.map(p=>p.y)
-            const area = (Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys))
-            const center = { x: 1 - (thumb.x+index.x)/2, y: (thumb.y+index.y)/2 }
-            const previous = previousRef.current
-            if (pinch && !previous.pinch) callbacksRef.current.onPinch('start', center)
-            if (pinch && previous.pinch) callbacksRef.current.onPinch('move', center)
-            if (!pinch && previous.pinch) callbacksRef.current.onPinch('end', center)
-            const throwDetected = curled && previous.fist && area > previous.area * 1.45 && area > 0.035 && now - (previous.lastThrow || 0) > 1800
+            const pinch = distance(thumb, index) < 0.065
+            const curled = [index, middle, ring, pinky].every(point => distance(point, wrist) < 0.29)
+            const xs = hand.map(point => point.x), ys = hand.map(point => point.y)
+            const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys))
+            const center = { x: 1 - (thumb.x + index.x) / 2, y: (thumb.y + index.y) / 2 }
+            return { pinch, curled, area, center }
+          }
+
+          const firstHand = hands[0]
+          if (firstHand) {
+            const first = getHandInfo(firstHand)
+            if (first.pinch && !previous.pinch) callbacksRef.current.onPinch('start', first.center)
+            if (first.pinch && previous.pinch) callbacksRef.current.onPinch('move', first.center)
+            if (!first.pinch && previous.pinch) callbacksRef.current.onPinch('end', first.center)
+
+            const throwDetected = first.curled && previous.fist &&
+              first.area > previous.area * 1.35 && first.area > 0.025 &&
+              now - (previous.lastThrow || 0) > 1400
             if (throwDetected) {
               callbacksRef.current.onPhysics()
               previous.lastThrow = now
               reportStatus('Forward fist movement detected · physics toggled')
-            } else if (pinch) reportStatus('Pinch detected · grab and move')
-            else if (curled) reportStatus('Fist detected · move hand forward to toggle physics')
-            else reportStatus('Hand tracked · try a pinch')
+            } else if (first.pinch) reportStatus('Pinch detected · move your hand to drag')
+            else if (first.curled) reportStatus('Fist detected · move it towards the camera to toggle physics')
+            else reportStatus('Hand tracked · bring thumb and index finger together to pinch')
 
-            const secondHand = result.landmarks?.[1]
+            const secondHand = hands[1]
             if (secondHand) {
-              const secondPinch = distance(secondHand[4], secondHand[8]) < 0.055
-              const secondCenter = { x: 1 - (secondHand[4].x + secondHand[8].x) / 2, y: (secondHand[4].y + secondHand[8].y) / 2 }
-              const gap = distance(center, secondCenter)
-              const bothPinching = pinch && secondPinch
-              if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12 && now - lastSplitRef.current > 900) {
+              const second = getHandInfo(secondHand)
+              const bothPinching = first.pinch && second.pinch
+              const gap = distance(first.center, second.center)
+              if (bothPinching && !previous.twoHandPinch) {
+                previous.twoHandStartGap = gap
+              }
+              const gapChangedEnough = Math.abs(gap - previous.twoHandStartGap) > 0.12
+              if (bothPinching && gapChangedEnough && now - lastSplitRef.current > 1000) {
                 callbacksRef.current.onTwoHandSplit()
+                lastSplitRef.current = now
                 previous.twoHandPinch = false
+                previous.twoHandStartGap = gap
                 reportStatus('Two-hand stretch detected · split view toggled')
               } else {
                 previous.twoHandPinch = bothPinching
@@ -133,40 +260,74 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             } else {
               previous.twoHandPinch = false
               previous.handGap = 0
+              previous.twoHandStartGap = 0
             }
-            previousRef.current = { ...previous, fist: curled, area, pinch, x: center.x, y: center.y }
+
+            previous.fist = first.curled
+            previous.area = first.area
+            previous.pinch = first.pinch
           } else {
-            if (previousRef.current.pinch) callbacksRef.current.onPinch('end', {x:0.5,y:0.5})
-            previousRef.current = { ...previousRef.current, fist: false, pinch: false, twoHandPinch: false, handGap: 0 }
-            reportStatus('Show one or both hands')
+            if (previous.pinch) callbacksRef.current.onPinch('end', { x: 0.5, y: 0.5 })
+            previous.fist = false
+            previous.pinch = false
+            previous.area = 0
+            previous.twoHandPinch = false
+            previous.handGap = 0
+            previous.twoHandStartGap = 0
+            reportStatus('Show one or both hands clearly to the camera')
           }
-          rafRef.current = requestAnimationFrame(detect)
+
+          localFrame = requestAnimationFrame(detect)
+          rafRef.current = localFrame
         }
-        detect()
-      } catch (e) {
-        setError(e?.message || 'Could not start the camera.')
-        reportStatus('Camera unavailable')
-        landmarkerRef.current?.close()
-        landmarkerRef.current = null
-        streamRef.current?.getTracks().forEach(track => track.stop())
-        streamRef.current = null
-        if (videoRef.current) videoRef.current.srcObject = null
+
+        localFrame = requestAnimationFrame(detect)
+        rafRef.current = localFrame
+      } catch (err) {
+        // An older StrictMode/effect instance must never tear down the newer camera stream.
+        if (cancelled) {
+          if (localLandmarker) { try { localLandmarker.close() } catch {} }
+          if (localStream) localStream.getTracks().forEach(track => track.stop())
+          return
+        }
+        setError(errorMessage(err, stage))
+        reportStatus(stage === 'camera permission' ? 'Camera unavailable · check permission' : 'Camera started, but gesture tracking failed')
+        stopLocalResources()
+        setReady(false)
       }
     }
+
     start()
+
     return () => {
       cancelled = true
-      cancelAnimationFrame(rafRef.current)
-      landmarkerRef.current?.close()
-      landmarkerRef.current = null
-      streamRef.current?.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-      setReady(false)
+      if (localFrame) cancelAnimationFrame(localFrame)
+      if (localLandmarker) {
+        try { localLandmarker.close() } catch {}
+        if (landmarkerRef.current === localLandmarker) landmarkerRef.current = null
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop())
+        if (streamRef.current === localStream) streamRef.current = null
+        if (videoRef.current?.srcObject === localStream) videoRef.current.srcObject = null
+      }
     }
   }, [enabled])
 
   if (!enabled) return null
-  return <div className="camera-panel"><div className="camera-preview"><video ref={videoRef} playsInline muted/><div className="camera-scan"><span/></div><div className="camera-state">{ready ? 'LIVE TRACKING' : 'CONNECTING CAMERA'}</div></div><div className="camera-panel-copy"><div><b>Gesture tracking</b><small>{error || status || (ready ? 'Processing stays in this browser.' : 'Allow camera access to begin.')}</small></div><button onClick={onClose} aria-label="Close camera">×</button></div></div>
+  return (
+    <div className="camera-panel">
+      <div className="camera-preview">
+        <video ref={videoRef} playsInline muted/>
+        <div className="camera-scan"><span/></div>
+        <div className="camera-state">{ready ? 'LIVE TRACKING' : error ? 'CAMERA ERROR' : 'STARTING CAMERA'}</div>
+      </div>
+      <div className="camera-panel-copy">
+        <div><b>Gesture tracking</b><small>{error || status || (ready ? 'Processing stays in this browser.' : 'Allow camera access to begin.')}</small></div>
+        <button onClick={onClose} aria-label="Close camera">×</button>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
