@@ -1,27 +1,26 @@
 # vukovickOS
 
-A gesture-first experimental desktop built with React + Vite. The project explores spatial interaction, deformable interfaces and playful desktop physics.
+A browser-based experimental desktop built with React, Vite and MediaPipe Tasks Vision.
 
-## Features in this prototype
+## Current prototype
 
-- Desktop with draggable app icons and a dock
-- Open, minimize, maximize and move app windows
-- Normal Mode and Free Physics Mode
-- Floating icons with gravity-like motion and edge bounce
-- Split-surface window concept
-- Optional webcam hand tracking with MediaPipe Tasks Vision
-- Pinch tracking for moving desktop icons
-- Experimental fist-and-forward-motion trigger for Free Physics
-- Responsive layout for desktop and tablets
+- Normal Mode starts with physics disabled.
+- Free Physics animates desktop icons with gravity-like motion and edge bounce.
+- Pointer-based dragging for desktop icons and windows.
+- App windows can be opened, focused, minimized, maximized/restored and closed.
+- Split-view demonstration for a second linked surface.
+- Optional webcam hand tracking with pinch-to-move and experimental fist-forward-motion activation.
+- GPU hand tracking with a CPU fallback planned for the camera engine.
+- Responsive layout and reduced-motion support.
 
-## Run locally
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Build
+## Production build
 
 ```bash
 npm run build
@@ -30,21 +29,17 @@ npm run preview
 
 ## Cloudflare Pages
 
-- Framework preset: **Vite**
+- Framework preset: Vite
 - Build command: `npm run build`
 - Build output directory: `dist`
 - Root directory: `/`
 
-The included `public/_redirects` keeps client-side routes working on Pages.
+The `public/_redirects` file enables SPA fallback routing.
 
 ## Camera and privacy
 
-Camera access is opt-in. Click **Enable camera** and grant browser permission. The MediaPipe hand-landmark model runs in the browser; frames are not uploaded by this app. Camera access requires HTTPS (Cloudflare Pages provides HTTPS) or localhost.
+Camera access is opt-in. The browser asks for permission when **Enable camera** is selected. Hand landmark processing runs in the browser. Camera access requires HTTPS or localhost. MediaPipe's WASM and model assets are loaded from their configured public CDNs.
 
-## Gesture prototype notes
+## Limitations
 
-The webcam implementation currently demonstrates hand landmarks, pinch tracking and a heuristic fist-thrust activation for Free Physics. It is an experimental interaction layer, not a production-grade gesture classifier. The other gestures in the concept (paper crumpling, splitting, throwing windows, circular activation) are represented by the desktop interaction model and are planned for future iterations.
-
-## Important
-
-vukovickOS is a browser-based desktop simulation, not a bootable operating system. It cannot manipulate native apps or system windows outside the browser.
+vukovickOS is a web simulation, not a bootable operating system. It cannot control native apps or operating-system windows. Split view is a visual prototype, music controls are a mock-up, and paper-like deformation, hand-to-hand transfer and robust throw recognition are not implemented yet.
