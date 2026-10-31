@@ -233,9 +233,9 @@ export default function App() {
       const board = boardRef.current.getBoundingClientRect()
       const x = point.x * board.width, y = point.y * board.height
       const nearest = iconsRef.current.reduce((best, icon) => {
-        const d = Math.hypot((icon.x/100*board.width)-x, (icon.y/100*board.height)-y)
+        const d = Math.hypot((icon.x / 100 * board.width) - x, (icon.y / 100 * board.height) - y)
         return d < best.d ? { id: icon.id, d } : best
-      }, {id:null,d:Infinity})
+      }, { id: null, d: Infinity })
       const hitWindow = [...boardRef.current.querySelectorAll('.app-window')].reverse().find(element => {
         const rect = element.getBoundingClientRect()
         return x >= rect.left - board.left && x <= rect.right - board.left && y >= rect.top - board.top && y <= rect.bottom - board.top
@@ -243,20 +243,30 @@ export default function App() {
       if (hitWindow) {
         const id = hitWindow.dataset.windowId
         const rect = hitWindow.getBoundingClientRect()
-        const offsetX = x - (rect.left - board.left)
-        const offsetY = y - (rect.top - board.top)
-        pinchRef.current = { windowId: id, offsetX, offsetY }
+        pinchRef.current = { windowId: id, offsetX: x - (rect.left - board.left), offsetY: y - (rect.top - board.top) }
         setActiveWindow(id)
       } else {
-        pinchRef.current = { id: nearest.d < 180 ? nearest.id : null }
+        pinchRef.current = { id: nearest.d < 95 ? nearest.id : null, lastX: point.x, lastY: point.y, lastTime: performance.now(), vx: 0, vy: 0 }
       }
     } else if (phase === 'move' && pinchRef.current?.windowId) {
       const board = boardRef.current.getBoundingClientRect()
       const { windowId, offsetX, offsetY } = pinchRef.current
-      setWindows(prev => prev.map(win => win.id === windowId ? { ...win, x: clamp(point.x * board.width - offsetX, 0, board.width - 260), y: clamp(point.y * board.height - offsetY, 0, board.height - 100) } : win))
+      setWindows(prev => prev.map(win => win.id === windowId ? { ...win, x: clamp(point.x * board.width - offsetX, 0, Math.max(0, board.width - 260)), y: clamp(point.y * board.height - offsetY, 0, Math.max(0, board.height - 100)) } : win))
     } else if (phase === 'move' && pinchRef.current?.id) {
-      setIcons(prev => prev.map(icon => icon.id === pinchRef.current.id ? { ...icon, x: clamp(point.x*100, 5, 94), y: clamp(point.y*100, 10, 88), vx: 0, vy: 0 } : icon))
+      const current = pinchRef.current
+      const stamp = performance.now()
+      const elapsed = clamp(stamp - current.lastTime, 16, 250)
+      current.vx = clamp((point.x - current.lastX) * 100 * (50 / elapsed), -2.2, 2.2)
+      current.vy = clamp((point.y - current.lastY) * 100 * (50 / elapsed), -2.2, 2.2)
+      current.lastX = point.x
+      current.lastY = point.y
+      current.lastTime = stamp
+      setIcons(prev => prev.map(icon => icon.id === current.id ? { ...icon, x: clamp(point.x * 100, 5, 94), y: clamp(point.y * 100, 10, 88), vx: 0, vy: 0 } : icon))
     } else if (phase === 'end') {
+      const current = pinchRef.current
+      if (current?.id && freePhysicsRef.current) {
+        setIcons(prev => prev.map(icon => icon.id === current.id ? { ...icon, vx: current.vx || 0, vy: current.vy || 0, rotation: icon.rotation + (current.vx || 0) * 10 } : icon))
+      }
       pinchRef.current = null
     }
   }, [])
