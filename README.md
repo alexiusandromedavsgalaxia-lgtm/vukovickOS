@@ -14,7 +14,9 @@ A gesture-first, browser-based spatial desktop experiment built with React, Vite
 - Split an app into two live, linked surfaces and reunite them.
 - Notes and desktop icon positions persist in this browser using local storage.
 - Optional webcam hand tracking with pinch interaction and a two-hand stretch gesture to toggle split view.
-- GPU hand tracking with a CPU fallback.
+- CPU-based hand tracking with throttled detection to reduce GPU and thermal instability.
+- In Free Physics, icons can be thrown with pointer dragging or a pinch gesture; launch velocity is capped for stability.
+- Camera tracking fails closed if frame detection errors, releasing the camera stream instead of leaving a runaway loop.
 - Responsive layout, keyboard shortcuts and reduced-motion support.
 
 ## Keyboard shortcuts
@@ -51,7 +53,7 @@ The `public/_redirects` file enables SPA fallback routing.
 
 ## Camera and privacy
 
-Camera access is opt-in. The browser asks for permission when **Enable camera** is selected. Hand landmark processing runs in the browser. Camera access requires HTTPS or localhost. MediaPipe's WASM and model assets are loaded from their configured public CDNs. No camera frames are uploaded by this app.
+Camera access is opt-in. The browser asks for permission when the **camera button in the dock** is selected. Hand landmark processing runs in the browser. Camera access requires HTTPS or localhost. MediaPipe's WASM and model assets are loaded from their configured public CDNs. No camera frames are uploaded by this app.
 
 ## Known limitations
 
