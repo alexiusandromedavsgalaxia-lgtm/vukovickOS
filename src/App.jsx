@@ -34,6 +34,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
   const streamRef = useRef(null)
   const previousRef = useRef({ fist: false, area: 0, pinch: false, x: 0, y: 0, lastThrow: 0, twoHandPinch: false, handGap: 0 })
   const lastDetectionRef = useRef(0)
+  const lastSplitRef = useRef(0)
   const lastStatusRef = useRef('')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
@@ -118,7 +119,7 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
               const secondCenter = { x: 1 - (secondHand[4].x + secondHand[8].x) / 2, y: (secondHand[4].y + secondHand[8].y) / 2 }
               const gap = distance(center, secondCenter)
               const bothPinching = pinch && secondPinch
-              if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12) {
+              if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12 && now - lastSplitRef.current > 900) {
                 callbacksRef.current.onTwoHandSplit()
                 previous.twoHandPinch = false
                 reportStatus('Two-hand stretch detected · split view toggled')
