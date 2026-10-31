@@ -75,13 +75,34 @@ function GestureCamera({ enabled, onClose, onPhysics, onStatus, onPinch, onTwoHa
             if (pinch && !previous.pinch) onPinch('start', center)
             if (pinch && previous.pinch) onPinch('move', center)
             if (!pinch && previous.pinch) onPinch('end', center)
-            if (curled && previous.fist && area > previous.area * 1.45 && area > 0.035 && now - (previous.lastThrow || 0) > 1800) {
+            const throwDetected = curled && previous.fist && area > previous.area * 1.45 && area > 0.035 && now - (previous.lastThrow || 0) > 1800
+            if (throwDetected) {
               onPhysics()
-              onStatus('Free Physics activated · throw detected')
+              previous.lastThrow = now
+              onStatus('Forward fist movement detected · physics toggled')
             } else if (pinch) onStatus('Pinch detected · grab and move')
-            else if (curled) onStatus('Fist detected · prepare a throw')
+            else if (curled) onStatus('Fist detected · move hand forward to toggle physics')
             else onStatus('Hand tracked · try a pinch')
-            previousRef.current = { fist: curled, area, pinch, x: center.x, y: center.y, lastThrow: curled && previous.fist && area > previous.area * 1.45 && area > 0.035 ? now : (previous.lastThrow || 0) }
+
+            const secondHand = result.landmarks?.[1]
+            if (secondHand) {
+              const secondPinch = distance(secondHand[4], secondHand[8]) < 0.055
+              const secondCenter = { x: 1 - (secondHand[4].x + secondHand[8].x) / 2, y: (secondHand[4].y + secondHand[8].y) / 2 }
+              const gap = distance(center, secondCenter)
+              const bothPinching = pinch && secondPinch
+              if (bothPinching && previous.twoHandPinch && Math.abs(gap - previous.handGap) > 0.12) {
+                onTwoHandSplit()
+                previous.twoHandPinch = false
+                onStatus('Two-hand stretch detected · split view toggled')
+              } else {
+                previous.twoHandPinch = bothPinching
+              }
+              previous.handGap = gap
+            } else {
+              previous.twoHandPinch = false
+              previous.handGap = 0
+            }
+            previousRef.current = { ...previous, fist: curled, area, pinch, x: center.x, y: center.y }
           } else {
             if (previousRef.current.pinch) onPinch('end', {x:0.5,y:0.5})
             previousRef.current = { ...previousRef.current, fist: false, pinch: false }
